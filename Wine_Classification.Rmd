@@ -127,7 +127,7 @@ For this analysis, we use the `winequality-red.csv` dataset [@wine_quality_186],
 <br>
 <br>
 
-**Objective:** Use decision trees and random forests to predict the quality of the Portuguese "Vinho Verde" red wine. 
+**Objective:** Use decision trees to predict the quality of the Portuguese "Vinho Verde" red wine. 
  <br>
  <br>
 Having downloaded the `winequality-red.csv` data, we read it in R, as shown below.
