@@ -1,0 +1,532 @@
+---
+title: "Red wine quality classification using decision trees"
+author: "Ruth Ogal"
+date: "2025-03-28"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+bibliography: ref_one.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+<!--CSS Rules for styling HTML elements-->
+<style>
+			body {
+			font-size: 16px;
+			}
+			table {
+			border-collapse: collapse;
+			width: 70%;
+			margin-bottom: 30px; 
+			margin-top: 30px;
+			}
+			th, td {
+			border: 1px solid black;
+			padding: 8px;
+			text-align: left;
+			}
+			th {
+			background-color: #f2f2f2;
+			}
+			.list-group-item.active, .list-group-item.active:focus, .list-group-item.active:hover{
+			background-color: #899499;
+			}
+			.invisible {
+			border: none;
+			background-color:transparent;
+			}
+			.leftHeader {
+			font-weight: bold;
+			background-color: #f2f2f2;
+			}
+</style>
+
+We load all vital packages.
+
+```{r, comment=NA, warning=FALSE, message=FALSE}
+library("rpart")
+library("rpart.plot")
+library("caret")
+library("corrplot")
+library("car")
+library("ROSE")
+```
+
+
+## About dataset
+
+For this analysis, we use the `winequality-red.csv` dataset [@wine_quality_186], accessible from the [UCI Machine Learning Repository](http://archive.ics.uci.edu/dataset/186/wine+quality). This dataset is based on observations made on red variants of the Portuguese "Vinho Verde" wine. It has 12 columns and 1599 observations. Table 1 describes the dataset's variables.
+
+<!--Custom HTML Table-->
+<table>
+  <thead>
+    <tr>
+      <th>Variable</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>fixed.acidity</td>
+      <td>Amount of non-volatile acids in the wine (mainly tartaric acids)</td>
+    </tr>
+    <tr>
+      <td>volatile.acidity</td>
+      <td>Amount of volatile acids in the wine (mainly acetic acids)</td>
+    </tr>
+    <tr>
+      <td>citric.acid</td>
+      <td>Amount of citric acid in the wine</td>
+    </tr>
+    <tr>
+      <td>residual.sugar</td>
+      <td>Amount of sugar remaining after fermentation. </td>
+    </tr>
+    <tr>
+      <td>chlorides</td>
+      <td>Concentration of chloride ions in the wine</td>
+    </tr>
+    <tr>
+      <td>free.sulfur.dioxide</td>
+      <td>Amount of sulfur dioxide not bound to compounds in the                  wine
+      </td>
+    </tr>
+    <tr>
+      <td>total.sulfur.dioxide</td>
+      <td>Total amount of sulfur dioxide in the wine</td>
+    </tr>
+    <tr>
+      <td>density</td>
+      <td>A measure of the wine's mass per unit volume</td>
+    </tr>
+    <tr>
+      <td>pH</td>
+      <td>Measure of the acidity or alkalinity of the wine</td>
+    </tr>
+    <tr>
+      <td>sulphates</td>
+      <td>Concentration of sulfate ions in the wine</td>
+    </tr>
+    <tr>
+      <td>alcohol</td>
+      <td>Percentage of alcohol in the wine</td>
+    </tr>
+    <tr>
+      <td>quality</td>
+      <td>Wine quality on a scale from 0 (very bad) to 10 (excellent) </td>
+    </tr>
+  </tbody>
+</table>
+<p style="font-weight: bold; text-indent: 30px;">Table 1: Variables in the red wine quality data.</p>
+<br>
+<br>
+
+**Objective:** Use decision trees and random forests to predict the quality of the Portuguese "Vinho Verde" red wine. 
+ <br>
+ <br>
+Having downloaded the `winequality-red.csv` data, we read it in R, as shown below.
+
+```{r, comment=NA}
+red <- read.csv("C:/Users/User/Desktop/Decision_trees_Random_Forests/Data/winequality-red.csv", header = TRUE, sep = ";")
+```
+
+
+For a better understanding of the dataset's structure, we use `str()`. 
+
+```{r, comment=NA}
+str(red)
+```
+
+`is.na()` helps with identifying missing values in the dataset.
+```{r, comment=NA}
+table(is.na(red))
+```
+
+We see that the dataset does not have any missing values. 
+
+For the analysis, we intend to create a target variable from the variable `quality`. We study the distribution of `quality` before splitting the data.
+
+```{r, comment=NA}
+table(red$quality)
+```
+
+We split the data into training (60%) and test (40%) sets. We use the training set to train the model and the test set to evaluate the performance of the trained model. 
+
+```{r, comment=NA}
+# Create a 60-40 split in the dataset
+set.seed(123)
+spt <- sample(1:nrow(red), round(nrow(red) * 0.6))
+red_train <- red[spt,]
+red_test <- red[-spt,]
+```
+
+
+## About decision trees
+
+A decision tree is a tree-like model, having multiple nodes and branches. A single internal node in the tree represents a question about a given feature, a branch growing from this node represents a possible answer to the node's question, and the leaf node at the end represents an outcome based on branch answers.
+
+
+## Exploratory data analysis
+
+As a non-parametric supervised learning method, a decision tree can model data without making assumptions about its underlying structure. Also, most decision tree algorithms can handle categorical as well as numerical data, missing values, and outliers. As such, they typically require minimal data preprocessing, making them easy to use [@boehmke2019].
+
+A primary goal of exploratory data analysis is to gain a deeper understanding of the data. Here, we use the `str()` function to get a sense of the internal structure of the training set. 
+
+
+```{r, comment=NA}
+str(red_train)
+```
+
+The training data has 959 observations and 12 variables. 
+
+To create the factor variable `new_quality`, we use the following criterion: If `quality` is greater than 6, the wine is considered `high` quality; otherwise, it is considered `low` quality. We code `high` quality wines as 1, and `low` quality wines as 0. Here is the code:
+
+```{r, comment=NA}
+red_train$new_quality <- cut(red_train$quality, breaks = c(-Inf, 6, Inf), labels = c(0, 1))
+```
+
+The new variable, `new_quality`, is the target variable in this analysis. We look at the distribution of this variable:
+
+```{r, comment=NA}
+table(red_train$new_quality)
+```
+
+It appears that high quality wine is a minority class in this dataset, comprising $(141/959) \times 100 = 14.7\%$ of the data. So, the dataset is somewhat imbalanced. We proceed by building two decision tree models. We train the first model on the imbalanced data and the second model on a balanced dataset. 
+
+As we no longer have use for the variable `quality`, we drop it from the training data.
+
+```{r, comment=NA}
+red_train$quality <- NULL
+```
+
+
+It is prudent to check for high correlation among input variables when working with decision trees. Such correlation can affect variable selection, leading to a less interpretable tree. We use a correlation matrix, drawn using the function `corrplot()` from the package `corrplot`, to detect highly correlated variables. The matrix is presented in Figure 1. 
+
+```{r, comment=NA}
+corrplot(cor(red_train[, -c(12)]), method = "square", order = "alphabet", type = "lower", diag = FALSE, addCoef.col = "black", number.cex = 0.6)
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 1. Correlations between predictors.</p> 
+
+The strongest correlations arise between the following variables:
+
++ `volatile.acidity` and `citric.acid` (-0.58)
+
++ `total.sulfur.dioxide` and `free.sulfur.dioxide` (0.67)
+
++ `PH` and `fixed.acidity` (-0.67)
+
++ `fixed.acidity` and `citric.acid` (0.68)
+
++ `fixed.acidity` and `density` (0.65)
+
++ `PH` and `citric.acid` (-0.54)
+
+With these insights in mind, we go ahead and perform a variance inflation factor (VIF) analysis using the `vif()` function from the `car` package. 
+
+```{r, comment=NA}
+fit_glm <- glm(new_quality ~ ., family = "binomial", data = red_train)
+vif(fit_glm)
+```
+
+The results of the VIF analysis reveal that `fixed.acidity` and `density` have VIFs $> 5$, suggesting a high level of multicollinearity.
+
+Looking at the previously computed correlation matrix, we observe that the variable `fixed.acidity` exhibits a strong correlation with three other variables, `PH`, `citric.acid`, and `density`, while `density` correlates strongly with only one variable, `fixed.acidity`. So, we remove `fixed.acidity` from the data and check whether the VIFs change in any way.
+
+```{r, comment=NA}
+fit_glm2 <- glm(new_quality ~ . -fixed.acidity, family = "binomial", data = red_train)
+vif(fit_glm2)
+```
+
+The VIFs for the remaining variables are all $< 5$. So, we drop `fixed.acidity` from the training data and move on to model building.
+
+```{r, comment=NA}
+red_train$fixed.acidity <- NULL
+```
+
+
+
+## Build and evaluate model
+
+### Using imbalanced data
+
+First we build a full tree and then use k-fold cross-validation to evaluate the complexity parameter (`cp`), which controls tree size by penalizing the addition of nodes to the tree. The `rpart()` function performs both tasks. We use it to build a full tree by setting `cp = 0` in the `rpart.control()` function. We then access the `cp` table, detailing the tree size, cross validation error (xerror), and standard error (xstd) for various `cp` values, by calling the `printcp()` function on the fitted tree object [@therneau_atkinson_2023]. 
+From the `cp` table, we can identify the optimal `cp`, and thus the optimal tree size, using the *1-SE rule*. This rule defines the optimal `cp` as the `cp` of the smallest tree within 1 standard error of the minimum cross validation error.
+As the cross validation process involves randomness, we set a seed to make the results reproducible.
+
+
+```{r, comment=NA}
+set.seed(130)
+fit_dt1 <- rpart(new_quality~., data=red_train, method="class", control = rpart.control(cp = 0))
+```
+
+
+As with other models in R, you can use the `summary()` function to get details of the fitted tree, including the `cp` table, variable importance, and node details. 
+
+For brevity, we don't show the results of `summary(fit_dt1)` here, but you can check it out for a better understanding of the full tree we've built.
+
+Next, we find the optimal `cp` to be used in tree pruning. 
+From the `cp` table obtained using the `printcp()` function, we identify the row with the smallest `xerror`, i.e., the eighth row (`xerror` = 0.86525, `xstd` = 0.073184).
+
+```{r, comment=NA}
+printcp(fit_dt1)
+```
+
+So, the optimal `cp` is the `cp` of the smallest tree whose `xerror` is less than $0.86525 + 0.073184 = 0.938434$. This computation gives a tree with `cp` = 0.0212766 and 6 terminal (leaf) nodes, as the ideal tree.
+
+We use the *prune()* function to prune the full tree based on this $cp$ value.
+
+```{r, comment=NA}
+fit_dt2 <- prune(fit_dt1, cp = 0.0212766)
+```
+
+Figure 2 shows a plot of the pruned tree.
+
+```{r, comment=NA}
+rpart.plot(fit_dt2)
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 2. Plot of fit_dt2.</p>
+
+We can view the relative variable importances on Figure 3, created using the code below.
+
+```{r, comment=NA}
+var_imp <- sort(fit_dt2$variable.importance, decreasing = TRUE)
+bp <- barplot(var_imp,
+              col = "steelblue",
+              border = NA, # Remove bar borders
+              ylim = c(0, max(var_imp)*1.1),
+              ylab = "Relative Importance", las = 2,
+              axes = FALSE) # Remove default axes
+
+# Add customized axis and labels
+axis(2, col = "gray50", col.axis = "gray30")  # Add Y-axis
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 3. Relative variable importances for fit_dt2.</p>
+
+
+#### Model evaluation
+
+Before we can use the model, `fit_dt2`, to make predictions on the training data, we determine a baseline accuracy score for the dataset. This score serves as a reference point against which we can evaluate the performance of the models we've built. We use the Zero Rule classifier, which always predicts the majority class, as the baseline model. So, the baseline accuracy is the proportion of wines in the majority class. 
+
+```{r, comment=NA}
+round(nrow(red_train[red_train$new_quality == 0, ])/nrow(red_train), 3)
+```
+
+However, the accuracy score can be misleading when used to evaluate a model trained on an imbalanced dataset because such a model can achieve a high accuracy by only predicting the majority class. A better metric for evaluating model performance in imbalanced datasets is the balanced accuracy score, calculated as the average of a model's sensitivity and specificity.  
+
+The Zero Rule classifier we're using as our baseline model has a sensitivity of 1 and a specificity of 0. So its balanced accuracy is $\frac{1 + 0}{2} = 0.5$.
+
+Next, we use the `predict()` function to make predictions on the training data.
+
+```{r, comment=NA}
+pred_dt2 <- predict(fit_dt2, newdata = red_train, type = "class")
+```
+
+
+The *confusionMatrix()* function from the *caret* package computes the following metrics for `fit_dt2` based on the training data:
+
+```{r, comment=NA}
+confusionMatrix(pred_dt2, red_train$new_quality, positive = "1")
+```
+
+The results above reveal that the tree's training accuracy (0.8874) is better than the baseline accuracy (0.853), given as the No Information Rate in the output above. Also, its training balanced accuracy (0.68159) is better than the baseline. So we can conclude that the model does learn meaningful patterns from the data.
+
+Next, we evaluate the tree's performance on the test dataset. To do so, we must transform the test data the same way we transformed the training data. We proceed as follows:
+
+1. Create the target variable `new_quality`.
+
+```{r, comment=NA}
+red_test$new_quality <- cut(red_test$quality, breaks = c(-Inf, 6, Inf), labels = c(0, 1))
+table(red_test$new_quality)
+```
+
+
+2. Drop the column `quality`.
+
+```{r, comment=NA}
+red_test$quality <- NULL
+```
+
+3. Drop the column `fixed.acidity`.
+
+```{r, comment=NA}
+red_test$fixed.acidity <- NULL
+```
+
+
+We can now make predictions on the test data:
+
+```{r, comment=NA}
+pred_dt2_test <- predict(fit_dt2, newdata = red_test, type = "class")
+```
+
+
+Finally, here are the evaluation metrics for `fit_dt2` based on the test data:
+
+```{r, comment=NA}
+confusionMatrix(pred_dt2_test, red_test$new_quality, positive = "1")
+```
+
+We see that the model's test accuracy (0.9094) is better than its training accuracy (0.8874), and its test balanced accuracy (0.68673) is slightly better than its training balanced accuracy (0.68159). The model's test precision (positive predictive value, 0.71429) is fairly good. However, its sensitivity on both training and test data is rather low, indicating its limited ability in correctly identifying true positives.    
+
+Overall, the model appears to generalize well on unseen data. 
+
+### Using balanced data
+
+We use two methods to balance the training data: undersampling and oversampling.
+
+With undersampling, the size of the majority class is reduced so it's closer to the minority class size, thus balancing the dataset. Here, the minority class has $141$ observations. We want the total number of observations in the training dataset to be $141 \times 2 = 282$. The function `ovunsample()` from the `ROSE` package has an argument called `method` that you can use to specify the resampling method you'd like to use [@RJ-2014-008]. For undersampling, this argument takes the value `"under"`. We also set the new sample size (N) to $282$.
+
+```{r, comment=NA}
+train_under <- ovun.sample(new_quality~., data=red_train, method="under", N = 282, seed = 1)$data
+table(train_under$new_quality)
+```
+
+In comparison, oversampling increases the size of the minority class so it matches or is closer to the size of the majority class. Here, the majority class has $818$ observations. We want the new sample size to be $818 \times 2 = 1636$. You can perform oversampling with `ROSE` by setting the `method` argument of the function `ovunsample()` to `"over"`, as shown below.
+
+```{r, comment=NA}
+train_over <- ovun.sample(new_quality~., data=red_train, method="over", N = 1636, seed = 1)$data
+table(train_over$new_quality)
+```
+
+We build a full decision tree on the undersampled data and prune the tree based on the value of the optimal `cp`. 
+
+```{r, comment=NA}
+set.seed(155)
+dt_under <- rpart(new_quality~., data=train_under, method="class", control = rpart.control(cp = 0))
+printcp(dt_under)
+```
+
+The optimal `cp` is the `cp` of the smallest tree whose `xerror` is less than $0.49645 + 0.051449 = 0.547899$. So the best tree has `cp` = 0.0460993. Figure 4 displays the pruned tree having only two terminal nodes.
+
+```{r, comment=NA}
+dt_under2 <- prune(dt_under, cp = 0.0460993)
+rpart.plot(dt_under2)
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 4. Plot of dt_under2.</p>
+
+We can see the relative variable importances for this model on Figure 5.
+
+```{r, comment=NA}
+var_imp_under2 <- sort(dt_under2$variable.importance, decreasing = TRUE)
+bp <- barplot(var_imp_under2,
+              col = "steelblue",
+              border = NA, # Remove bar borders
+              ylim = c(0, max(var_imp_under2)*1.1),
+              ylab = "Relative Importance", las = 2,
+              axes = FALSE) # Remove default axes
+
+# Add customized axis and labels
+axis(2, col = "gray50", col.axis = "gray30")  # Add Y-axis
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 5. Relative variable importances for dt_under2.</p>
+
+We also build a full tree on the oversampled data.
+
+```{r, comment=NA}
+set.seed(233)
+dt_over <- rpart(new_quality~., data=train_over, method="class", control = rpart.control(cp = 0))
+printcp(dt_over)
+```
+
+The optimal `cp` is the `cp` of the smallest tree with an `xerror` less than $0.22861 + 0.015733 = 0.244343$. So, `cp` = 0.00366748.
+
+We prune the true as follows:
+
+```{r, comment=NA}
+dt_over2 <- prune(dt_over, cp = 0.00366748)
+```
+
+Figure 6 displays the pruned tree.
+
+```{r, comment=NA}
+rpart.plot(dt_over2)
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 6. Plot of dt_over2.</p>
+
+
+The following code produces the relative variable importances for this model shown in Figure 7.
+
+```{r, comment=NA}
+var_imp_over2 <- sort(dt_over2$variable.importance, decreasing = TRUE)
+bp <- barplot(var_imp_over2,
+              col = "steelblue",
+              border = NA, # Remove bar borders
+              ylim = c(0, max(var_imp_over2)*1.1),
+              ylab = "Relative Importance", las = 2,
+              axes = FALSE) # Remove default axes
+
+# Add customized axis and labels
+axis(2, col = "gray50", col.axis = "gray30")  # Add Y-axis
+```
+<p style="font-weight: bold; text-indent: 30px;">Figure 7. Relative variable importances for dt_over2.</p>
+
+
+#### Model evaluation
+
+The following metrics illustrate the performance of `dt_under2` (pruned tree trained on undersampled data) on test data:
+
+```{r, comment=NA}
+pred_dt_under2 <- predict(dt_under2, newdata = red_test, type = "class")
+confusionMatrix(pred_dt_under2, red_test$new_quality, positive = "1")
+```
+
+Here are the performance metrics for `dt_over2` (pruned tree trained on oversampled data):
+
+```{r, comment=NA}
+pred_dt_over2 <- predict(dt_over2, newdata = red_test, type = "class")
+confusionMatrix(pred_dt_over2, red_test$new_quality, positive = "1")
+```
+
+The performance results of the three models developed in this article are shown in Table 2. 
+
+
+<!--Custom HTML Table-->
+<table>
+    <thead>
+        <tr>
+            <th class="invisible"></th>
+            <th>Accuracy</th>
+            <th>Balanced Accuracy</th>
+            <th>Precision</th>
+            <th>Sensitivity</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="leftHeader">fit_dt2</td>
+            <td>0.9094</td>
+            <td>0.68673</td>
+            <td>0.71429</td>
+            <td>0.39474</td>
+        </tr>
+        <tr>
+            <td class="leftHeader">dt_under2</td>
+            <td>0.7047</td>
+            <td>0.73568</td>
+            <td>0.25541</td>
+            <td>0.77632</td>
+        </tr>
+        <tr>
+            <td class="leftHeader">dt_over2</td>
+            <td>0.8453</td>
+            <td>0.7984</td>
+            <td>0.4148</td>
+            <td>0.7368</td>
+        </tr>       
+    </tbody>
+</table>
+<p style="font-weight: bold; text-indent: 30px;">Table 2: Model performances on test data.</p>
+<br>
+<br>
+
+From Table 2, we see that the best model in terms of balanced accuracy is `dt_over2`. `fit_dt2` has the lowest sensitivity (0.39474) of the three models, indicating that it struggles to correctly classify instances of the minority class. `dt_under2` has the lowest precision (0.25541) of the three models probably because it is exposed to fewer instances of the majority class, thus causing it to misclassify examples from this class resulting in a larger number of false positives.
+
+From the model variable importance plots, we see that the variables `alcohol` and `density` are consistently ranked high across all three models. So, we can conclude that these variables are crucial for predicting the quality of red wines. 
+
+## References
